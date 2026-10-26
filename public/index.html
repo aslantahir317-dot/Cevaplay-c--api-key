@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cevaplayıcı API Key</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b1020;color:#f4f5ff;font-family:system-ui,Arial}
+header{padding:20px;display:flex;align-items:center;gap:12px;
+border-bottom:1px solid #252b45;background:#10162a}
+.logo{background:linear-gradient(135deg,#7657ff,#258aff);
+padding:12px;border-radius:15px;font-size:24px}
+h1{font-size:21px;margin:0}
+.sub{color:#a6b0d0;font-size:12px}
+main{max-width:760px;margin:auto;padding:20px}
+.card{background:#121a30;border:1px solid #293352;
+border-radius:18px;padding:17px;margin-bottom:16px}
+h2{font-size:17px;margin-top:0}
+input,textarea{width:100%;padding:13px;background:#0b1020;
+border:1px solid #343d5d;border-radius:12px;color:white;
+font:inherit;margin:6px 0}
+button{border:0;border-radius:12px;padding:12px 15px;
+background:linear-gradient(135deg,#7657ff,#398bff);
+color:white;font-weight:700;font-size:14px;cursor:pointer}
+button:disabled{opacity:.5}
+.secondary{background:#28314e}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row button{flex:1}
+#chat{min-height:180px;max-height:400px;overflow:auto;
+display:flex;flex-direction:column;gap:10px}
+.msg{padding:12px 14px;border-radius:14px;max-width:92%;
+white-space:pre-wrap;overflow-wrap:anywhere}
+.user{align-self:flex-end;background:#5541b9}
+.bot{align-self:flex-start;background:#222d49}
+.small{font-size:12px;color:#a6b0d0}
+.status{color:#83e6bd;font-size:12px}
+footer{text-align:center;color:#8993b2;font-size:12px;padding:18px}
+</style>
+</head>
+<body>
+<header>
+<div class="logo">🧠</div>
+<div>
+<h1>Cevaplayıcı API Key</h1>
+<div class="sub">API anahtarını oluştur ve kullan!</div>
+</div>
+</header>
+<main>
+<section class="card">
+<h2>🔑 API anahtarın</h2>
+<p class="small">Anahtarını oluştur. Kimseyle paylaşma.</p>
+<input id="key" type="password" placeholder="API anahtarın">
+<div class="row">
+<button id="create" onclick="createKey()">Yeni anahtar oluştur</button>
+<button class="secondary" onclick="toggleKey()">Göster / Gizle</button>
+</div>
+<p id="keyStatus" class="small">Anahtar yalnızca bu tarayıcıda saklanır.</p>
+</section>
+
+<section class="card">
+<h2>💬 Cevaplayıcı ile konuş</h2>
+<div id="chat">
+<div class="msg bot">Merhaba knk! 😎 Ben Cevaplayıcı. Bana bir şey sor!</div>
+</div>
+<textarea id="message" rows="2" placeholder="Mesajını yaz..."></textarea>
+<div class="row">
+<button id="send" onclick="sendMessage()">Gönder ➤</button>
+<button class="secondary" onclick="clearChat()">Sohbeti temizle</button>
+</div>
+<p id="status" class="small">API bağlantısı bekleniyor.</p>
+</section>
+<footer>Cevaplayıcı AI · Kendi motorumuzla çalışır</footer>
+</main>
+<script>
+const keyInput=document.getElementById('key');
+const statusEl=document.getElementById('status');
+keyInput.value=localStorage.getItem('cvp_site_key')||'';
+
+function toggleKey(){
+ keyInput.type=keyInput.type==='password'?'text':'password';
+}
+keyInput.addEventListener('change',()=>{
+ localStorage.setItem('cvp_site_key',keyInput.value.trim());
+});
+
+async function createKey(){
+ const btn=document.getElementById('create');
+ btn.disabled=true;
+ try{
+  const r=await fetch('/v1/keys',{method:'POST'});
+  const d=await r.json();
+  if(!r.ok||!d.api_key)throw Error(d.error||'Anahtar oluşturulamadı');
+  keyInput.value=d.api_key;
+  keyInput.type='password';
+  localStorage.setItem('cvp_site_key',d.api_key);
+  document.getElementById('keyStatus').textContent=
+   'Anahtar oluşturuldu ve bu tarayıcıya kaydedildi.';
+ }catch(e){
+  document.getElementById('keyStatus').textContent=
+   'Hata: '+e.message;
+ }finally{btn.disabled=false}
+}
+
+function addMessage(text,who){
+ const el=document.createElement('div');
+ el.className='msg '+who;
+ el.textContent=text;
+ const chat=document.getElementById('chat');
+ chat.appendChild(el);
+ chat.scrollTop=chat.scrollHeight;
+}
+
+async function sendMessage(){
+ const message=document.getElementById('message').value.trim();
+ const key=keyInput.value.trim();
+ if(!key){statusEl.textContent='Önce API anahtarı oluştur veya gir.';return}
+ if(!message)return;
+ document.getElementById('message').value='';
+ addMessage(message,'user');
+ const btn=document.getElementById('send');
+ btn.disabled=true;
+ statusEl.textContent='Cevap hazırlanıyor...';
+ try{
+  const r=await fetch('/v1/chat',{
+   method:'POST',
+   headers:{
+    'Content-Type':'application/json',
+    'Authorization':'Bearer '+key
+   },
+   body:JSON.stringify({message})
+  });
+  const d=await r.json();
+  if(!r.ok)throw Error(d.error||'API hatası');
+  addMessage(d.response||d.message||'Boş cevap','bot');
+  statusEl.textContent='Bağlandı ✓';
+ }catch(e){
+  addMessage('Bağlantı hatası: '+e.message,'bot');
+  statusEl.textContent='Bağlantı kurulamadı.';
+ }finally{btn.disabled=false}
+}
+
+function clearChat(){
+ document.getElementById('chat').innerHTML='';
+}
+document.getElementById('message').addEventListener('keydown',e=>{
+ if(e.key==='Enter'&&!e.shiftKey){
+  e.preventDefault();sendMessage();
+ }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "free": [
+    {
+      "name": "free-1",
+      "enabled": false,
+      "url": "",
+      "key": "",
+      "model": ""
+    },
+    {
+      "name": "free-2",
+      "enabled": false,
+      "url": "",
+      "key": "",
+      "model": ""
+    }
+  ],
+  "paid": [
+    {
+      "name": "paid-1",
+      "enabled": false,
+      "url": "",
+      "key": "",
+      "model": ""
+    }
+  ],
+  "local": {
+    "enabled": true
+  }
+}
