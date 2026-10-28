@@ -1,18 +1,25 @@
 const express = require("express");
 const crypto = require("crypto");
 const fs = require("fs");
+const path = require("path");
 const { cevapla } = require("./ai");
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
 const PORT = process.env.PORT || 3000;
-const KEY_FILE = "./keys.json";
+const KEY_FILE = path.join(__dirname, "keys.json");
 
-if (!fs.existsSync(KEY_FILE)) fs.writeFileSync(KEY_FILE, "[]");
+if (!fs.existsSync(KEY_FILE)) {
+  fs.writeFileSync(KEY_FILE, "[]");
+}
 
 function loadKeys() {
-  return JSON.parse(fs.readFileSync(KEY_FILE, "utf8"));
+  try {
+    return JSON.parse(fs.readFileSync(KEY_FILE, "utf8"));
+  } catch {
+    return [];
+  }
 }
 
 function saveKeys(keys) {
@@ -22,65 +29,63 @@ function saveKeys(keys) {
 function checkKey(req, res, next) {
   const auth = req.headers.authorization || "";
   const key = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-
   const keys = loadKeys();
 
   if (!keys.some(k => k.key === key && k.active !== false)) {
     return res.status(401).json({
       success: false,
-      error: "Gecersiz API key"
+      error: "Geçersiz API key"
     });
   }
-
   next();
 }
 
-app.get("/site", (req, res) => res.sendFile(require("path").join(__dirname, "public", "index.html")));
 app.get("/", (req, res) => {
   res.json({
-    name: "Cevaplayici API",
+    name: "Cevaplayıcı API",
     status: "online",
-    ai: "Cevaplayici Kendi AI"
+    ai: "OpenRouter"
   });
+});
+
+app.get("/site", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 app.post("/v1/keys", (req, res) => {
   const key = "cvp_live_" + crypto.randomBytes(24).toString("hex");
-
   const keys = loadKeys();
   keys.push({
     key,
     createdAt: new Date().toISOString(),
     active: true
   });
-
   saveKeys(keys);
-
-  res.json({
-    success: true,
-    api_key: key
-  });
+  res.json({ success: true, api_key: key });
 });
 
-app.post("/v1/chat", checkKey, (req, res) => {
+app.post("/v1/chat", checkKey, async (req, res) => {
   const message = req.body?.message;
 
-  if (!message) {
+  if (typeof message !== "string" || !message.trim()) {
     return res.status(400).json({
       success: false,
       error: "message gerekli"
     });
   }
 
-  const response = cevapla(String(message));
-
-  res.json({
-    success: true,
-    response
-  });
+  try {
+    const response = await cevapla(message);
+    res.json({ success: true, response });
+  } catch (error) {
+    console.error("AI hatası:", error.message);
+    res.status(502).json({
+      success: false,
+      error: "AI yanıt veremedi. Render loglarını kontrol et."
+    });
+  }
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("🤖 Cevaplayici Kendi AI API calisiyor!");
-  console.log("🌐 http://127.0.0.1:" + PORT);
+  console.log("Cevaplayıcı API çalışıyor: port " + PORT);
 });
