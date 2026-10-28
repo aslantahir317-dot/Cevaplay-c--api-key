@@ -22,10 +22,7 @@ async function cevapla(mesaj) {
   const ogren = soru.match(/^öğren:\s*(.+)$/i);
   if (ogren) {
     const hafiza = oku();
-    hafiza.push({
-      bilgi: ogren[1],
-      tarih: new Date().toISOString()
-    });
+    hafiza.push({ bilgi: ogren[1], tarih: new Date().toISOString() });
     yaz(hafiza);
     return "Tamam knk, bilgiyi hafızama kaydettim! 🧠";
   }
@@ -67,7 +64,6 @@ async function cevapla(mesaj) {
 
   const answer = data.choices?.[0]?.message?.content;
   if (!answer) throw new Error("Grok boş cevap verdi.");
-
   return answer;
 }
 
