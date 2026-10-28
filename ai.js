@@ -1,70 +1,106 @@
 const fs = require("fs");
 const path = require("path");
 
-const MEMORY = path.join(__dirname, "memory.json");
+const MEMORY_FILE = path.join(__dirname, "memory.json");
 
-function oku() {
+function hafizayiOku() {
   try {
-    return JSON.parse(fs.readFileSync(MEMORY, "utf8"));
-  } catch {
-    return [];
+    if (fs.existsSync(MEMORY_FILE)) {
+      return fs.readFileSync(MEMORY_FILE, "utf8");
+    }
+  } catch (e) {
+    console.error("Hafıza okunamadı:", e.message);
+  }
+  return "";
+}
+
+function hafizayiYaz(text) {
+  try {
+    fs.writeFileSync(MEMORY_FILE, text, "utf8");
+    return true;
+  } catch (e) {
+    console.error("Hafıza kaydedilemedi:", e.message);
+    return false;
   }
 }
 
-function yaz(data) {
-  fs.writeFileSync(MEMORY, JSON.stringify(data, null, 2));
-}
-
-async function cevapla(mesaj) {
-  const soru = String(mesaj || "").trim();
-  if (!soru) return "Knk, bir soru yaz 😊";
-
-  const ogren = soru.match(/^öğren:\s*(.+)$/i);
-  if (ogren) {
-    const hafiza = oku();
-    hafiza.push({ bilgi: ogren[1], tarih: new Date().toISOString() });
-    yaz(hafiza);
-    return "Tamam knk, bilgiyi hafızama kaydettim! 🧠";
+async function cevapla(message) {
+  if (typeof message !== "string" || !message.trim()) {
+    throw new Error("Mesaj boş olamaz.");
   }
 
-  if (/^(ne öğrendin|hafızanda ne var)\??$/i.test(soru)) {
-    const hafiza = oku();
-    return hafiza.length
-      ? hafiza.map((x, i) => `${i + 1}. ${x.bilgi}`).join("\n")
-      : "Henüz öğrenilmiş bilgi yok knk.";
+  const apiKey = process.env.XAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Render ortamında XAI_API_KEY tanımlanmamış.");
   }
 
-  const key = process.env.XAI_API_KEY;
-  if (!key) throw new Error("XAI_API_KEY Render ortamında ayarlanmamış.");
+  const text = message.trim();
 
-  const res = await fetch("https://api.x.ai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: process.env.XAI_MODEL || "grok-4.7",
-      messages: [
-        {
-          role: "system",
-          content: "Sen Cevaplayıcı adlı Türkçe yapay zekâ asistanısın. Sade, doğru ve yardımcı cevaplar ver. Bilmediğini uydurma."
-        },
-        { role: "user", content: soru }
-      ],
-      max_tokens: 1200
-    }),
-    signal: AbortSignal.timeout(60000)
-  });
+  if (/^öğren\s*:/i.test(text)) {
+    const oldMemory = hafizayiOku();
+    const newMemory = oldMemory
+      ? oldMemory + "\n" + text.replace(/^öğren\s*:/i, "").trim()
+      : text.replace(/^öğren\s*:/i, "").trim();
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error?.message || `Grok HTTP ${res.status}`);
+    if (!hafizayiYaz(newMemory)) {
+      throw new Error("Bilgi hafızaya kaydedilemedi.");
+    }
+    return "Tamam krdsm, bu bilgiyi hafızama kaydettim. 🧠";
   }
 
-  const answer = data.choices?.[0]?.message?.content;
-  if (!answer) throw new Error("Grok boş cevap verdi.");
-  return answer;
+  if (/^(ne öğrendin|hafızanda ne var)\??$/i.test(text)) {
+    return hafizayiOku() || "Henüz kayıtlı bir bilgim yok.";
+  }
+
+  const memory = hafizayiOku();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 55000);
+
+  try {
+    const response = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: process.env.XAI_MODEL || "grok-4.7",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Sen Cevaplayıcı adlı yapay zekâ asistanısın. Türkçe, anlaşılır ve doğru cevap ver. Kullanıcıya doğal ve samimi konuş. Bilmediğin şeyi uydurma. " +
+              (memory ? "\nKayıtlı hafıza:\n" + memory.slice(-10000) : "")
+          },
+          { role: "user", content: text }
+        ],
+        max_tokens: 1200,
+        temperature: 0.7
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const detail = data?.error?.message || data?.message || `HTTP ${response.status}`;
+      throw new Error(`xAI API (${response.status}): ${detail}`);
+    }
+
+    const answer = data?.choices?.[0]?.message?.content;
+    if (typeof answer !== "string" || !answer.trim()) {
+      throw new Error("Grok boş yanıt döndürdü.");
+    }
+
+    return answer.trim();
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Grok bağlantısı zaman aşımına uğradı.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 module.exports = { cevapla };

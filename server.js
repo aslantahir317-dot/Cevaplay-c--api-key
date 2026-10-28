@@ -81,7 +81,7 @@ app.post("/v1/chat", checkKey, async (req, res) => {
     console.error("AI hatası:", error.message);
     res.status(502).json({
       success: false,
-      error: "AI yanıt veremedi. Render loglarını kontrol et."
+      error: "Grok hatası: " + (error.message || "Bilinmeyen hata")
     });
   }
 });
